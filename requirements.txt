@@ -1,0 +1,9 @@
+markdown2==2.4.0
+matplotlib==3.7.1
+pandas==2.2.2
+numpy==1.26.4
+google-genai>=1.0.0 # anthropic==0.74.1 #openai==2.8.1
+python-docx==0.8.11
+rich==13.5.2
+# optional for evaluation
+textstat==0.7.1
