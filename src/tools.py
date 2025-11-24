@@ -11,15 +11,21 @@ from docx import Document
 from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-from src.config import input_path
-df_json = pd.read_excel(input_path).to_json()
+from src.utils import load_dataframe
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 
-def top_performers(group_by_column: str, metric_column: str, n: int = 5) -> str:
+def top_performers(input_path: str, group_by_column: str, metric_column: str, n: int = 5) -> str:
     """
-    Identifies and returns the top N performers from the loaded JSON DataFrame based on a specified metric.
+    Identifies and returns the top N performers from the DataFrame based on a specified metric.
 
     Args:
+        input_path (str): Input file path.
         group_by_column (str): The column to group by (e.g., 'salesperson', 'region', 'product').
         metric_column (str): The column containing the metric to evaluate performance (e.g., 'sales_amount', 'profit').
         n (int): The number of top performers to return.
@@ -27,7 +33,8 @@ def top_performers(group_by_column: str, metric_column: str, n: int = 5) -> str:
     Returns:
         str: A JSON string representing the top N performers, sorted by the metric.
     """
-    df = pd.read_json(df_json)
+    df = load_dataframe(input_path)
+
     if df.empty or group_by_column not in df.columns or metric_column not in df.columns:
         return json.dumps({"error": "Invalid DataFrame or columns provided."})
 
@@ -38,11 +45,12 @@ def top_performers(group_by_column: str, metric_column: str, n: int = 5) -> str:
     result = performance.to_dict(orient='records')
     return json.dumps(result)
 
-def under_performers(group_by_column: str, metric_column: str, n: int = 5) -> str:
+def under_performers(input_path: str, group_by_column: str, metric_column: str, n: int = 5) -> str:
     """
-    Identifies and returns the bottom N under-performers from the loaded JSON DataFrame based on a specified metric.
+    Identifies and returns the bottom N under-performers from the DataFrame based on a specified metric.
 
     Args:
+        input_path (str): Input file path.
         group_by_column (str): The column to group by (e.g., 'salesperson', 'region', 'product').
         metric_column (str): The column containing the metric to evaluate performance (e.g., 'sales_amount', 'profit').
         n (int): The number of under-performers to return.
@@ -50,7 +58,8 @@ def under_performers(group_by_column: str, metric_column: str, n: int = 5) -> st
     Returns:
         str: A JSON string representing the bottom N under-performers, sorted by the metric.
     """
-    df = pd.read_json(df_json)
+    df = load_dataframe(input_path)
+
     if df.empty or group_by_column not in df.columns or metric_column not in df.columns:
         return json.dumps({"error": "Invalid DataFrame or columns provided."})
 
@@ -62,7 +71,7 @@ def under_performers(group_by_column: str, metric_column: str, n: int = 5) -> st
     result = performance.to_dict(orient='records')
     return json.dumps(result)
 
-def ols_key_driver_analysis(target_column: str, feature_columns: list[str]):
+def ols_key_driver_analysis(input_path: str, target_column: str, feature_columns: list[str]):
     """
     **TOOL DESCRIPTION**
     Performs an Ordinary Least Squares (OLS) regression analysis using the Statsmodels formula API 
@@ -70,9 +79,10 @@ def ols_key_driver_analysis(target_column: str, feature_columns: list[str]):
     numeric and non-numeric (categorical) feature columns via one-hot encoding.
 
     **INPUTS**
+    - `input_path` (str): Input file path.
     - `target_column` (str): The name of the dependent variable (Y) column in the DataFrame.
     - `feature_columns` (list[str]): A list of independent variable (X) column names used as predictors.
-    - `df_json` (str): The input data as a JSON-serialized pandas DataFrame (using `df.to_json()`).
+    - `input_path` (str): The input data path.
 
     **OUTPUT**
     Returns a JSON string containing the regression results: 
@@ -95,8 +105,8 @@ def ols_key_driver_analysis(target_column: str, feature_columns: list[str]):
       "r_squared": 0.75
     }
     ```
-    """    
-    df = pd.read_json(df_json)
+    """
+    df = load_dataframe(input_path)
     # Ensure target and feature columns are numeric, coercing errors will turn non-numeric into NaN
     # Ensure the target column is numeric
     df[target_column] = pd.to_numeric(df[target_column], errors='coerce')
@@ -127,17 +137,18 @@ def ols_key_driver_analysis(target_column: str, feature_columns: list[str]):
     except Exception as e:
         return json.dumps({"error": str(e)})
 
-def preview_data(head_rows: int = 5) -> str:
+def preview_data(input_path: str, head_rows: int = 5) -> str:
     """
-    Returns a preview of the loaded DataFrame from a JSON string, typically the first few rows.
+    Returns a preview of the DataFrame, typically the first few rows.
 
     Args:
+        input_path (str): Input file path.
         head_rows (int): The number of rows to return from the head of the DataFrame.
 
     Returns:
         str: A JSON string representing the head of the DataFrame.
     """
-    df = pd.read_json(df_json)
+    df = load_dataframe(input_path)
     if df.empty:
         return json.dumps({"message": "DataFrame is empty."})
 
@@ -153,110 +164,110 @@ def preview_data(head_rows: int = 5) -> str:
 
 
 def generate_simple_plot(
-    plot_type: str, 
+    input_path: str,
+    plot_type: str,
     title: str,
-    x_col: str, 
-    y_col: str, 
+    x_col: str,
+    y_col: str,
     groupby_col: Optional[str] = None,
-    save_path: str = 'dynamic_plot.png'
+    save_path: str = "dynamic_plot.png",
+    agg_func: str = "sum",
 ) -> str:
     """
-    Generates data points in JSON format suitable for plotting a bar or line graph, 
-    generates the corresponding matplotlib plot, saves it, and returns a JSON 
-    string containing both the plot path and the data points.
+    Generates a simple bar or line plot from a dataset with optional aggregation.
+    
+    Line plots support optional grouping; bar plots do not.
+    Aggregation supports 'sum' or 'mean'.
 
-    Only 'bar' and 'line' plots are supported.
+    Parameters
+    ----------
+    input_path : str
+        Path to CSV/Excel file.
+    plot_type : str
+        'line' or 'bar'.
+    title : str
+        Plot title.
+    x_col : str
+        Column for x-axis.
+    y_col : str
+        Column for y-axis values.
+    groupby_col : Optional[str]
+        Column to group by for line plots (ignored for bar plots).
+    save_path : str
+        File path to save the plot.
+    agg_func : str
+        Aggregation function: 'sum' or 'mean'.
 
-    Args:
-        plot_type (str): The type of plot data to generate: 'bar' or 'line'.
-        title (str): The title for the plot.
-        x_col (str): The column to use for the x-axis.
-        y_col (str): The column to use for values (y-axis).
-        df_json (str): The input DataFrame as a JSON string.
-        groupby_col (Optional[str]): An optional column for grouping data in a 'line' plot.
-        save_path (str, optional): The local file path to save the plot image.
-
-    Returns:
-        str: A JSON string containing 'plot_path' (str) and 'plot_data_json' (str).
+    Returns
+    -------
+    str
+        JSON string containing:
+        - 'plot_path': absolute path to saved plot
+        - 'plot_data_json': JSON string of aggregated data
     """
-    
-    if plot_type not in ['line', 'bar']:
-        return json.dumps({"error": f"Unsupported plot type '{plot_type}'. Choose 'bar' or 'line'."})
+    # 1. Load data
+    df = load_dataframe(input_path)
+    df[y_col] = pd.to_numeric(df[y_col], errors="coerce")
+    cols_to_check = [x_col, y_col]
+    if plot_type == "line" and groupby_col:
+        cols_to_check.append(groupby_col)
+    df = df.dropna(subset=cols_to_check)
+    if df.empty:
+        return json.dumps({"error": "No valid data after cleaning."})
 
-    # 1. Load and clean the data
-    try:
-        df = pd.read_json(df_json)
-        df[y_col] = pd.to_numeric(df[y_col], errors='coerce')
-        
-        cols_to_check = [x_col, y_col]
-        if groupby_col:
-            cols_to_check.append(groupby_col)
-            
-        df_clean = df.dropna(subset=cols_to_check)
+    # 2. Validate aggregation
+    agg_func = (agg_func or "sum").lower()
+    if agg_func not in ("sum", "mean"):
+        agg_func = "sum"
 
-        if df_clean.empty:
-            return json.dumps({"error": "No valid data after cleaning for analysis."})
-        
-    except Exception as e:
-        return json.dumps({"error": f"Error processing input data: {str(e)}"})
+    # 3. Aggregate data
+    if plot_type == "line":
+        group_cols = [x_col] + ([groupby_col] if groupby_col else [])
+    else:
+        group_cols = [x_col]
 
-    # 2. Handle aggregation
-    group_keys = [x_col]
-    if plot_type == 'line' and groupby_col:
-        group_keys.append(groupby_col)
-    
-    final_group_keys = [pd.Grouper(key=col) if pd.api.types.is_datetime64_any_dtype(df_clean[col]) else col for col in group_keys]
-    df_plot = df_clean.groupby(final_group_keys)[y_col].sum().reset_index()
+    df_plot = df.groupby(group_cols)[y_col].agg(agg_func).reset_index()
+    df_plot = df_plot.sort_values(by=x_col)
 
-    # 3. Generate and Save the Matplotlib plot
+    # 4. Plot
     plt.figure(figsize=(10, 6))
-    
-    if plot_type == 'line':
+    if plot_type == "line":
         if groupby_col:
-            for label, group_df in df_plot.groupby(groupby_col):
-                 plt.plot(group_df[x_col], group_df[y_col], label=label, marker='o')
-            plt.legend(title=groupby_col.title(), bbox_to_anchor=(1.05, 1), loc='upper left')
+            for label, g in df_plot.groupby(groupby_col):
+                plt.plot(g[x_col], g[y_col], marker="o", label=str(label))
+            if df_plot[groupby_col].nunique() > 1:
+                plt.legend(title=groupby_col.title(), bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
-            plt.plot(df_plot[x_col], df_plot[y_col], marker='o')
+            plt.plot(df_plot[x_col], df_plot[y_col], marker="o")
+    elif plot_type == "bar":
+        df_plot.plot(kind="bar", x=x_col, y=y_col, ax=plt.gca(), legend=False)
+        plt.xticks(rotation=45, ha="right")
+    else:
+        return json.dumps({"error": f"Unsupported plot type '{plot_type}'"})
 
-    elif plot_type == 'bar':
-        df_plot.plot(kind='bar', x=x_col, y=y_col, ax=plt.gca(), legend=False)
-        plt.xticks(rotation=45, ha='right')
-
-    # Customize plot
+    # 5. Customize plot
     plt.title(title)
     plt.xlabel(x_col.title())
-    plt.ylabel(y_col.title())
-    plt.grid(True, axis='y')
+    plt.ylabel(f"{y_col.title()} ({agg_func})")
+    plt.grid(True, axis="y")
     if pd.api.types.is_datetime64_any_dtype(df_plot[x_col]):
-            plt.gcf().autofmt_xdate()
-    plt.tight_layout(rect=[0, 0, 0.85, 1] if plt.legend() else None)
+        plt.gcf().autofmt_xdate()
+    plt.tight_layout()
 
-    # Ensure directory exists and save plot
-    os.makedirs(os.path.dirname(save_path) or '.', exist_ok=True)
+    # 6. Save plot
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     plt.savefig(save_path, dpi=300)
     plt.close()
-    
     absolute_plot_path = os.path.abspath(save_path)
 
-    # 4. Prepare data points for JSON return
-    # Format time columns to ISO strings for JSON compatibility in the *data* output
-    for col in df_plot.columns:
-        if pd.api.types.is_datetime64_any_dtype(df_plot[col]):
-            df_plot[col] = df_plot[col].dt.isoformat()
-            
-    plot_data = df_plot.to_dict(orient='records')
-    plot_data_json_string = json.dumps(plot_data)
+    # 7. Prepare JSON data
+    df_out = df_plot.copy()
+    for col in df_out.columns:
+        if pd.api.types.is_datetime64_any_dtype(df_out[col]):
+            df_out[col] = df_out[col].dt.isoformat()
+    plot_data_json = json.dumps(df_out.to_dict(orient="records"))
 
-    # 5. Return both pieces of info in a single JSON object
-    result = {
-        "plot_path": absolute_plot_path,
-        "plot_data_json": plot_data_json_string
-    }
-
-    return json.dumps(result)
-
-
+    return json.dumps({"plot_path": absolute_plot_path, "plot_data_json": plot_data_json})
 
 def assemble_simple_report_docx(sections_json: str, report_title: str = 'Generated Report', outfile: str = 'report.docx') -> str:
     """
@@ -352,11 +363,4 @@ def assemble_simple_report_docx(sections_json: str, report_title: str = 'Generat
     except Exception as e:
         return f"An error occurred during DOCX generation: {str(e)}"
 
-tools = [
-   top_performers,
-   under_performers,
-   ols_key_driver_analysis,
-   preview_data,
-   assemble_simple_report_docx,
-   generate_simple_plot
-]
+
